@@ -1,0 +1,8 @@
+[
+  {"asset_id": "AST-001", "hostname": "dc01.corp.local", "type": "domain_controller", "os": "Windows Server 2019", "criticality": 5, "internet_exposed": false, "owner": "Infrastructure"},
+  {"asset_id": "AST-002", "hostname": "web-dmz-02", "type": "web_server", "os": "Ubuntu 22.04", "criticality": 4, "internet_exposed": true, "owner": "AppDev"},
+  {"asset_id": "AST-003", "hostname": "hr-wks-114", "type": "workstation", "os": "Windows 11", "criticality": 2, "internet_exposed": false, "owner": "Desktop Support"},
+  {"asset_id": "AST-004", "hostname": "files01.corp.local", "type": "file_server", "os": "Windows Server 2016", "criticality": 4, "internet_exposed": false, "owner": "Infrastructure"},
+  {"asset_id": "AST-005", "hostname": "pump-gw-07", "type": "iomt_gateway", "os": "Embedded Linux 4.14", "criticality": 5, "internet_exposed": false, "owner": "Clinical Engineering"},
+  {"asset_id": "AST-006", "hostname": "kiosk-lobby-3", "type": "kiosk", "os": "Windows 10 LTSC", "criticality": 1, "internet_exposed": false, "owner": "Desktop Support"}
+]

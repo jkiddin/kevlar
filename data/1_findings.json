@@ -1,0 +1,5 @@
+[
+  {"finding_id": "MYORG-001", "asset_id": "SRV-100", "cve": "CVE-2021-44228", "title": "Log4Shell in internal API gateway", "cvss": 10.0, "service": "http 8080", "banner": "Apache Tomcat/9.0.50", "first_seen": "2026-07-08"},
+  {"finding_id": "MYORG-002", "asset_id": "SRV-200", "cve": "CVE-2024-6387", "title": "OpenSSH regreSSHion RCE", "cvss": 8.1, "service": "sshd 8.9p1", "banner": "SSH-2.0-OpenSSH_8.9p1", "first_seen": "2026-07-08"},
+  {"finding_id": "MYORG-003", "asset_id": "SRV-300", "cve": "CVE-2023-5678", "title": "OpenSSL DH key generation weakness", "cvss": 5.3, "service": "openssl 3.0.2", "banner": "", "first_seen": "2026-07-08"}
+]
