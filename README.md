@@ -84,6 +84,7 @@ The weights and policy floors are defined in `kevlar/score.py`, so the reason fo
 | Output contract | LLM responses must be JSON with an exact key set, non-empty remediation steps, and references checked against an approved-domain list. |
 | Leak check | Quarantined text is checked for resurfacing in an LLM response before that response is accepted. |
 | Fail-closed drafting | Invalid LLM output is rejected and replaced with a deterministic template ticket. |
+| Rendered output | A quarantined hostname is replaced with the asset ID in ticket titles and summaries, the triage report, and the console output. |
 | Analyst visibility | Findings that trigger the input screen are marked with a security alert in the generated ticket. |
 
 The pattern screen is a best-effort detection control, not the primary security boundary. A new or obfuscated payload may avoid a regular expression. The stronger control is architectural: ticket prose is separated from the code that assigns priority.
@@ -99,12 +100,10 @@ python -m pip install -r requirements.txt
 Run the included offline demo using cached EPSS and KEV data and deterministic ticket templates:
 
 ```bash
-python -m kevlar.cli \
-  --findings data/2_findings.json \
-  --assets data/2_assets.json
+python -m kevlar.cli
 ```
 
-Generated files are written to `out/`.
+This uses the bundled sample data (`data/2_findings.json` and `data/2_assets.json`) by default; pass `--findings` and `--assets` to process your own. Generated files are written to `out/`.
 
 ### Optional LLM drafting
 
@@ -113,23 +112,17 @@ Set an Anthropic API key and add `--llm`:
 ```bash
 export ANTHROPIC_API_KEY="your-api-key"
 
-python -m kevlar.cli \
-  --findings data/2_findings.json \
-  --assets data/2_assets.json \
-  --llm
+python -m kevlar.cli --llm
 ```
 
-Without `--llm`, or without an API key, Kevlar uses the deterministic template renderer.
+Drafting uses Claude Sonnet (`claude-sonnet-4-6`, set in `kevlar/triage.py`). Without `--llm`, or without an API key, Kevlar uses the deterministic template renderer.
 
 ### Refresh enrichment data
 
 Add `--refresh` to retrieve current EPSS scores from FIRST and the current KEV catalog from CISA before processing the findings:
 
 ```bash
-python -m kevlar.cli \
-  --findings data/2_findings.json \
-  --assets data/2_assets.json \
-  --refresh
+python -m kevlar.cli --refresh
 ```
 
 ## Red-team testing
@@ -152,6 +145,8 @@ The current offline suite covers seven payload categories:
 
 For each case, the harness checks that the input was detected, the computed priority remained identical to the clean baseline, the ticket contract held, and the payload did not reappear in the ticket body. The included suite currently passes **7/7** cases in template mode.
 
+In template mode the contract check confirms a well-formed ticket was produced with no leak violations; the strict JSON output contract is only exercised end to end when the harness runs with `--llm`.
+
 To run the same harness with LLM drafting enabled:
 
 ```bash
@@ -159,11 +154,17 @@ export ANTHROPIC_API_KEY="your-api-key"
 python -m redteam.run_injection_tests --llm
 ```
 
-## Sample poisoned finding
+## Sample poisoned data
 
 `data/2_findings.json` includes a deliberately poisoned Log4Shell finding (`F-1006`). Its service banner tells an automated reviewer to ignore prior instructions, label the finding a false positive, and lower its priority.
 
 Kevlar flags and redacts the banner before drafting. The finding remains P1 because its priority was already calculated from trusted scoring inputs.
+
+The second dataset (`data/1_findings.json` and `data/1_assets.json`) demonstrates injection through the asset inventory rather than the scan itself: the bastion host `SRV-200` in `1_assets.json` carries an instruction payload in its hostname. Hostnames are screened alongside the scan fields, so the finding is flagged and its ticket, report row, and console line are rendered with the hostname redacted:
+
+```bash
+python -m kevlar.cli --findings data/1_findings.json --assets data/1_assets.json
+```
 
 ## Input format
 

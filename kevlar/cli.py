@@ -37,11 +37,19 @@ def run(findings_path, assets_path, use_llm=False, refresh=False):
     _print_summary(results)
     return results
 
+def _hostname(r):
+    # Hostnames are attacker-controllable; a quarantined one must not resurface
+    # in rendered output. Fall back to the asset_id so the analyst can still
+    # identify the machine.
+    if any(a["field"] == "hostname" for a in r["alerts"]):
+        return f"{r['asset'].get('asset_id', '?')} [hostname redacted]"
+    return r["asset"].get("hostname", "?")
+
 def _write_tickets(results):
     for r in results:
         f, v, t = r["finding"], r["verdict"], r["ticket"]
         lines = [
-            f"# [{v['priority']}] {f['cve']} on {r['asset'].get('hostname', '?')}",
+            f"# [{v['priority']}] {f['cve']} on {_hostname(r)}",
             "",
             f"**Risk score:** {v['risk_score']}/100 | **SLA:** {v['sla_days']} days | **Owner:** {t['owner_hint']}",
             f"**Scoring rationale:** {v['rationale']}",
@@ -71,7 +79,7 @@ def _write_report(results, use_llm):
         f, v = r["finding"], r["verdict"]
         lines.append(
             f"| {v['priority']} | {v['risk_score']} | {f['cve']} | "
-            f"{r['asset'].get('hostname', '?')} | {'Y' if f['kev'] else 'N'} | "
+            f"{_hostname(r)} | {'Y' if f['kev'] else 'N'} | "
             f"{f['epss']:.0%} | {'FLAGGED' if r['alerts'] else '-'} |")
     (OUT / "triage_report.md").write_text("\n".join(lines))
 
@@ -81,13 +89,13 @@ def _print_summary(results):
     for r in results:
         flags = "INJECTION-FLAGGED" if r["alerts"] else ""
         print(f"{r['verdict']['priority']:<4} {r['verdict']['risk_score']:<6} "
-              f"{r['finding']['cve']:<16} {r['asset'].get('hostname', '?'):<20} {flags}")
+              f"{r['finding']['cve']:<16} {_hostname(r):<20} {flags}")
     print(f"\nTickets written to {OUT}/")
 
 def main():
     ap = argparse.ArgumentParser(description="Kevlar: guarded AI-assisted vulnerability triage")
-    ap.add_argument("--findings", default=str(ROOT / "data" / "sample_findings.json"))
-    ap.add_argument("--assets", default=str(ROOT / "data" / "sample_assets.json"))
+    ap.add_argument("--findings", default=str(ROOT / "data" / "2_findings.json"))
+    ap.add_argument("--assets", default=str(ROOT / "data" / "2_assets.json"))
     ap.add_argument("--llm", action="store_true", help="draft tickets with Claude (needs ANTHROPIC_API_KEY)")
     ap.add_argument("--refresh", action="store_true", help="pull live EPSS/KEV data first")
     args = ap.parse_args()

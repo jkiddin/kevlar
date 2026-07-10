@@ -4,8 +4,8 @@ Draft remediation tickets. The LLM writes prose; it never decides priority.
 Two modes:
   - LLM mode: Claude drafts the summary/impact/steps inside the guardrails 
     defined in guardrails.py.
-  - Template mode (--no-llm, or no key): deterministic ticket rendering.
-    Useful for offline demos and as the baseline in injection testing.
+  - Template mode (default, or when no API key is set): deterministic ticket
+    rendering. Useful for offline demos and as the baseline in injection testing.
 """
 
 import json
@@ -89,7 +89,7 @@ def _template_ticket(clean, asset):
     kev_note = " CISA lists this CVE as actively exploited in the wild." if clean["kev"] else ""
     return {
         "summary": (
-            f"{clean['cve']} detected on {asset.get('hostname', 'unknown host')} "
+            f"{clean['cve']} detected on {clean.get('hostname') or 'unknown host'} "
             f"({asset.get('type', 'asset')}, {asset.get('os', 'unknown OS')})."
             f"{kev_note} Finding first observed {clean.get('first_seen', 'n/a')}."
         ),

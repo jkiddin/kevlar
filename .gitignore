@@ -219,3 +219,6 @@ __marimo__/
 
 # thank you mac
 .DS_Store
+
+# Kevlar generated tickets and reports
+out/
