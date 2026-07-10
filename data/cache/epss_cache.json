@@ -1,0 +1,10 @@
+{
+  "_note": "Sample cached EPSS snapshot for offline demo. Run with --refresh to pull live scores from api.first.org.",
+  "CVE-2024-6387": 0.912,
+  "CVE-2019-0708": 0.975,
+  "CVE-2017-0144": 0.972,
+  "CVE-2023-4863": 0.883,
+  "CVE-2023-5678": 0.004,
+  "CVE-2021-44228": 0.976,
+  "CVE-2023-34362": 0.969
+}

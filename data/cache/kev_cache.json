@@ -1,0 +1,4 @@
+{
+  "_note": "Sample cached subset of the CISA KEV catalog for offline demo. Run with --refresh to pull the live catalog from cisa.gov.",
+  "cves": ["CVE-2019-0708", "CVE-2017-0144", "CVE-2023-4863", "CVE-2021-44228", "CVE-2023-34362", "CVE-2024-6387"]
+}
