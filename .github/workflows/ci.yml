@@ -1,8 +1,17 @@
-name: ci
+name: CI
 
 on:
   push:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      llm:
+        description: "Also run the red-team suite against Claude (needs the ANTHROPIC_API_KEY repository secret)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -10,20 +19,46 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      # Actions are pinned to commit SHAs so a moved tag cannot change what runs.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -r requirements-dev.txt
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Install
+        run: python -m pip install -r requirements-dev.txt
       - name: Unit tests
         run: python -m pytest -q
-      # No API key in CI, so the suite runs in template mode: it proves
-      # containment (fence, priority, contract, leak) but not model behaviour.
-      # Run `python -m redteam.run_injection_tests --llm` locally for that.
-      - name: Prompt-injection red-team suite
+      - name: Red-team suite (template mode)
         run: python -m redteam.run_injection_tests
       - name: Offline demo
-        run: python -m kevlar.cli
+        run: python -m kevlar.cli --out "$RUNNER_TEMP/kevlar-out"
+
+  redteam-llm:
+    # Manual only: Actions > CI > Run workflow > tick "llm". Costs a few cents.
+    if: github.event_name == 'workflow_dispatch' && inputs.llm
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Install
+        run: python -m pip install -r requirements.txt
+      - name: Red-team suite (LLM mode)
+        shell: bash  # explicit bash enables pipefail, so a failing suite still fails the job
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python -m redteam.run_injection_tests --llm | tee "$RUNNER_TEMP/redteam-llm.txt"
+      - name: Publish results to the run summary
+        if: always()
+        run: |
+          { echo '### Red-team suite (LLM mode)'; echo '```'; cat "$RUNNER_TEMP/redteam-llm.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
