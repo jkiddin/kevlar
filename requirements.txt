@@ -1,2 +1,4 @@
-requests>=2.31
-anthropic
+requests>=2.31,<3
+# Kevlar uses messages.create(..., output_config=...), present in both SDK
+# majors; verified against anthropic 0.116 and 1.x.
+anthropic>=0.116,<2

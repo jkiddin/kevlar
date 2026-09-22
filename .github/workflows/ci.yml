@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-dev.txt
+      - name: Unit tests
+        run: python -m pytest -q
+      # No API key in CI, so the suite runs in template mode: it proves
+      # containment (fence, priority, contract, leak) but not model behaviour.
+      # Run `python -m redteam.run_injection_tests --llm` locally for that.
+      - name: Prompt-injection red-team suite
+        run: python -m redteam.run_injection_tests
+      - name: Offline demo
+        run: python -m kevlar.cli
