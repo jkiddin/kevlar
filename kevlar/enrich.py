@@ -8,6 +8,7 @@ Live sources:
 Both are cached to data/cache/ so the pipeline runs offline. Use --refresh to update.
 """
 
+import datetime
 import json
 import pathlib
 
@@ -18,10 +19,11 @@ KEV_CACHE = CACHE_DIR / "kev_cache.json"
 EPSS_URL = "https://api.first.org/data/v1/epss"
 KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 
-# The EPSS API takes a comma-separated CVE list. A real scan export is
-# thousands of CVEs, which would blow past URL length limits and the API's
-# default result page, so requests are chunked.
-EPSS_BATCH_SIZE = 50
+# The EPSS API returns 100 rows per page by default, and a long comma-separated
+# CVE list also runs into URL length limits. Real scan exports reference
+# thousands of CVEs, so lookups are sent in batches.
+EPSS_BATCH_SIZE = 100
+
 
 def _load_json(path, default):
     try:
@@ -29,20 +31,20 @@ def _load_json(path, default):
     except (FileNotFoundError, json.JSONDecodeError):
         return default
 
-def _batches(items, size):
-    for start in range(0, len(items), size):
-        yield items[start:start + size]
 
-def refresh_caches(cves):
+def _batches(items, size):
+    for i in range(0, len(items), size):
+        yield items[i:i + size]
+
+
+def refresh_caches(cves, batch_size=EPSS_BATCH_SIZE):
     """Pull live EPSS + KEV data and rewrite the caches. Requires internet."""
     import requests
 
+    wanted = sorted(set(cves))
     epss = _load_json(EPSS_CACHE, {})
-    wanted = sorted({c for c in cves if not str(c).startswith("_")})
-    for batch in _batches(wanted, EPSS_BATCH_SIZE):
-        resp = requests.get(
-            EPSS_URL, params={"cve": ",".join(batch), "limit": len(batch)}, timeout=30
-        )
+    for batch in _batches(wanted, batch_size):
+        resp = requests.get(EPSS_URL, params={"cve": ",".join(batch), "limit": len(batch)}, timeout=30)
         resp.raise_for_status()
         for row in resp.json().get("data", []):
             epss[row["cve"]] = float(row["epss"])
@@ -51,10 +53,14 @@ def refresh_caches(cves):
     resp = requests.get(KEV_URL, timeout=60)
     resp.raise_for_status()
     kev_cves = sorted({v["cveID"] for v in resp.json().get("vulnerabilities", [])})
-    KEV_CACHE.write_text(json.dumps({"cves": kev_cves}, indent=2))
-    print(f"[enrich] refreshed caches: {len(epss)} EPSS scores "
-          f"({len(wanted)} CVEs requested in {(len(wanted) + EPSS_BATCH_SIZE - 1) // EPSS_BATCH_SIZE} "
-          f"batches), {len(kev_cves)} KEV entries")
+    KEV_CACHE.write_text(json.dumps({
+        "_note": f"CISA KEV catalog snapshot retrieved {datetime.date.today().isoformat()}.",
+        "cves": kev_cves,
+    }, indent=2))
+    n_batches = -(-len(wanted) // batch_size)
+    print(f"[enrich] refreshed caches: {len(epss)} EPSS scores ({n_batches} request(s)), "
+          f"{len(kev_cves)} KEV entries")
+
 
 def enrich(findings, refresh=False):
     """Attach epss (float, 0 if unknown) and kev (bool) to each finding dict."""

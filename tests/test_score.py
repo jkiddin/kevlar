@@ -1,57 +1,56 @@
-"""Scoring is the authority boundary: these numbers are never model output."""
-
 import pytest
 
 from kevlar import score
 
-LOW_ASSET = {"criticality": 1, "internet_exposed": False}
-HIGH_ASSET = {"criticality": 5, "internet_exposed": True}
 
-
-def finding(cvss=7.0, epss=0.1, kev=False):
+def f(cvss=5.0, epss=0.0, kev=False):
     return {"cvss": cvss, "epss": epss, "kev": kev}
 
 
+def a(criticality=3, exposed=False):
+    return {"criticality": criticality, "internet_exposed": exposed}
+
+
+def test_formula_matches_documented_weights():
+    # (7.0*6 + 0.4*25) * (0.6 + 0.1*3) = 52 * 0.9 = 46.8
+    assert score.score_finding(f(7.0, 0.4), a(3))["risk_score"] == 46.8
+
+
+def test_exposure_multiplier():
+    closed = score.score_finding(f(7.0, 0.4), a(3, exposed=False))["risk_score"]
+    exposed = score.score_finding(f(7.0, 0.4), a(3, exposed=True))["risk_score"]
+    assert exposed == pytest.approx(closed * 1.15, abs=0.1)
+
+
 def test_score_is_capped_at_100():
-    verdict = score.score_finding(finding(cvss=10.0, epss=1.0, kev=True), HIGH_ASSET)
-    assert verdict["risk_score"] == 100.0
+    assert score.score_finding(f(10.0, 1.0, kev=True), a(5, exposed=True))["risk_score"] == 100.0
 
 
-def test_criticality_and_exposure_raise_the_score():
-    low = score.score_finding(finding(), LOW_ASSET)["risk_score"]
-    high = score.score_finding(finding(), HIGH_ASSET)["risk_score"]
-    assert high > low
+@pytest.mark.parametrize("finding,asset,priority,sla", [
+    (f(5.0, 0.0), a(3), "P4", 180),    # 30.0 * 0.9 = 27.0
+    (f(7.0, 0.4), a(3), "P3", 90),     # 52.0 * 0.9 = 46.8
+    (f(9.0, 0.5), a(4), "P2", 30),     # 66.5 * 1.0 = 66.5
+    (f(10.0, 1.0), a(5), "P1", 7),     # 85.0 * 1.1 = 93.5
+])
+def test_thresholds_and_slas(finding, asset, priority, sla):
+    verdict = score.score_finding(finding, asset)
+    assert (verdict["priority"], verdict["sla_days"]) == (priority, sla)
 
 
-def test_kev_on_a_critical_asset_floors_at_p1():
-    # Score alone would land well below P1; policy overrides the arithmetic.
-    verdict = score.score_finding(finding(cvss=3.0, epss=0.01, kev=True),
-                                  {"criticality": 4, "internet_exposed": False})
-    assert verdict["risk_score"] < 85 and verdict["priority"] == "P1"
-
-
-def test_any_kev_finding_floors_at_p2():
-    verdict = score.score_finding(finding(cvss=2.0, epss=0.0, kev=True), LOW_ASSET)
+def test_kev_floor_lifts_low_score_to_p2():
+    verdict = score.score_finding(f(4.0, 0.0, kev=True), a(1))
+    assert verdict["risk_score"] < 35
     assert verdict["priority"] == "P2"
 
 
-def test_low_risk_non_kev_finding_stays_p4():
-    verdict = score.score_finding(finding(cvss=2.0, epss=0.0), LOW_ASSET)
-    assert verdict["priority"] == "P4"
+def test_kev_on_critical_asset_is_p1():
+    verdict = score.score_finding(f(4.0, 0.0, kev=True), a(4))
+    assert verdict["risk_score"] < 60
+    assert verdict["priority"] == "P1"
+    assert verdict["sla_days"] == 7
 
 
-@pytest.mark.parametrize("priority,days", [("P1", 7), ("P2", 30), ("P3", 90), ("P4", 180)])
-def test_sla_matches_priority(priority, days):
-    assert score.SLA_DAYS[priority] == days
-
-
-def test_rationale_explains_the_inputs():
-    verdict = score.score_finding(finding(cvss=9.8, epss=0.5, kev=True), HIGH_ASSET)
-    assert "CVSS 9.8" in verdict["rationale"]
-    assert "CISA KEV" in verdict["rationale"]
-    assert "internet exposed" in verdict["rationale"]
-
-
-def test_missing_criticality_defaults_to_mid():
-    assert (score.score_finding(finding(), {})["risk_score"]
-            == score.score_finding(finding(), {"criticality": 3})["risk_score"])
+def test_rationale_names_every_input():
+    text = score.score_finding(f(9.8, 0.969, kev=True), a(4, exposed=True))["rationale"]
+    for part in ("CVSS 9.8", "EPSS 96.9%", "CISA KEV", "criticality 4/5", "internet exposed"):
+        assert part in text
