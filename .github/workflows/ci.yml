@@ -57,8 +57,17 @@ jobs:
         shell: bash  # explicit bash enables pipefail, so a failing suite still fails the job
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python -m redteam.run_injection_tests --llm | tee "$RUNNER_TEMP/redteam-llm.txt"
+        run: |
+          python -m redteam.run_injection_tests --llm --results-dir "$RUNNER_TEMP/redteam" \
+            | tee "$RUNNER_TEMP/redteam-llm.txt"
       - name: Publish results to the run summary
         if: always()
+        shell: bash
         run: |
-          { echo '### Red-team suite (LLM mode)'; echo '```'; cat "$RUNNER_TEMP/redteam-llm.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          # The generated tables exist only if the suite ran to completion; fall
+          # back to the console output so a crashed run still reports something.
+          if ls "$RUNNER_TEMP"/redteam/llm-*.md >/dev/null 2>&1; then
+            cat "$RUNNER_TEMP"/redteam/llm-*.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            { echo '### Red-team suite (LLM mode)'; echo '```'; cat "$RUNNER_TEMP/redteam-llm.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -166,6 +166,26 @@ def test_template_ticket_passes_the_contract(finding, asset):
     assert guardrails.validate_ticket(json.dumps(draft.ticket), draft.alerts)[1] == []
 
 
+def test_oversize_hostname_cannot_break_the_ticket_contract(finding, asset):
+    # A 3000-character hostname is attacker-chosen input that the template
+    # echoes into the summary; unclamped it blows the contract's prose limit.
+    asset["hostname"] = "web-dmz-02." + "a" * 3000
+    draft = triage.draft_ticket(finding, asset, use_llm=False)
+    assert [a["action"] for a in draft.alerts] == ["truncated"]
+    assert len(draft.ticket["summary"]) < guardrails.MAX_PROSE_CHARS
+    assert guardrails.validate_ticket(json.dumps(draft.ticket), draft.alerts)[1] == []
+
+
+def test_an_undetected_link_stays_out_of_ticket_prose(finding, asset):
+    # The pattern screen has no opinion about links, so this value reaches the
+    # template unflagged. The ticket still must not carry the URL.
+    finding["service"] = "http 443 (see https://nvd.nist.gov.evil.example/advisory)"
+    draft = triage.draft_ticket(finding, asset, use_llm=False)
+    assert draft.alerts == []
+    assert "evil.example" not in json.dumps(draft.ticket)
+    assert guardrails.validate_ticket(json.dumps(draft.ticket), draft.alerts)[1] == []
+
+
 def test_template_uses_screened_values(finding, asset):
     asset["hostname"] = "web<script>-02"
     draft = triage.draft_ticket(finding, asset, use_llm=False)

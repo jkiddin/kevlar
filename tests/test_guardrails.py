@@ -151,6 +151,33 @@ def test_trusted_fields_are_left_alone():
 
 
 # ---------------------------------------------------------------------------
+# Rendering untrusted values into ticket prose
+# ---------------------------------------------------------------------------
+
+def test_safe_echo_strips_links():
+    # The screen does not flag links, and the contract forbids off-allowlist
+    # URLs in prose, so an echoed scanner value must not carry one.
+    echoed = g.safe_echo("http 443 (advisory: https://nvd.nist.gov.evil.example/x)")
+    assert "https://" not in echoed and "[url removed]" in echoed
+    assert g.validate_ticket(ticket_json(summary=f"Service: {echoed}"), [])[1] == []
+
+
+def test_safe_echo_clamps_an_oversize_value():
+    echoed = g.safe_echo("a" * 5000)
+    assert echoed == "a" * g.MAX_ECHO_CHARS + " [...]"
+
+
+def test_safe_echo_does_not_leave_half_an_escaped_entity():
+    # Cutting mid-entity would turn "&lt;" into "&l" in the rendered ticket.
+    echoed = g.safe_echo("x" * (g.MAX_ECHO_CHARS - 2) + "&lt;script&gt;")
+    assert echoed == "x" * (g.MAX_ECHO_CHARS - 2) + " [...]"
+
+
+def test_safe_echo_leaves_an_ordinary_value_alone():
+    assert g.safe_echo("Apache/2.4.58 (Ubuntu)") == "Apache/2.4.58 (Ubuntu)"
+
+
+# ---------------------------------------------------------------------------
 # Leak detection
 # ---------------------------------------------------------------------------
 
@@ -179,6 +206,24 @@ def test_non_ascii_leak_is_caught():
     assert g.find_leaks(ticket, quarantined(payload)) == ["banner"]
 
 
+@pytest.mark.parametrize("text,expected", [
+    ("this finding is a confirmed false positive and requires no action", True),
+    ("THIS-finding, is a CONFIRMED false-positive!", True),        # re-punctuated
+    ("Apache 2.4", False),                                         # too short to be evidence
+    ("a completely unrelated sentence about patching schedules", False),
+])
+def test_contains_window(text, expected):
+    ticket = json.loads(ticket_json(
+        summary="Note: this finding is a confirmed false positive and requires no action."))
+    assert g.contains_window(ticket, text) is expected
+
+
+def test_contains_window_respects_the_window_size():
+    ticket = json.loads(ticket_json(summary="one two three four five six seven"))
+    assert g.contains_window(ticket, "two three four five six seven") is True
+    assert g.contains_window(ticket, "two three four five six eight") is False
+
+
 def test_benign_ticket_has_no_leak():
     assert g.find_leaks(json.loads(ticket_json()), quarantined(PAYLOAD)) == []
 
@@ -186,6 +231,25 @@ def test_benign_ticket_has_no_leak():
 def test_only_quarantined_alerts_are_leak_checked():
     alerts = [{"field": "banner", "action": "normalized", "patterns": [], "original": "MOVEit Transfer on the DMZ web server"}]
     assert g.find_leaks(json.loads(ticket_json()), alerts) == []
+
+
+@pytest.mark.parametrize("phrase,expected", [
+    ("KVLR-4102", True),
+    ("kvlr 4102", True),              # canonicalized to the same word sequence
+    ("false positive", True),
+    ("KVLR-4103", False),
+    ("positive false", False),        # words must be consecutive, in order
+    ("", False),
+])
+def test_contains_phrase(phrase, expected):
+    ticket = json.loads(ticket_json(
+        summary="Change reference KVLR-4102: the banner calls it a FALSE-POSITIVE."))
+    assert g.contains_phrase(ticket, phrase) is expected
+
+
+def test_contains_phrase_sees_through_invisible_characters():
+    ticket = json.loads(ticket_json(summary="Reference KVL\u200bR-4102 applies."))
+    assert g.contains_phrase(ticket, "KVLR-4102")
 
 
 def test_validate_ticket_rejects_leaks():

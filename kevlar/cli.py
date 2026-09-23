@@ -60,7 +60,7 @@ def _hostname(r):
     # value, never the raw one.
     if any(a["field"] == "hostname" and a["action"] == "quarantined" for a in r["alerts"]):
         return f"{r['asset'].get('asset_id', '?')} [hostname redacted]"
-    return r["clean"].get("hostname") or "?"
+    return guardrails.safe_echo(r["clean"].get("hostname") or "?")
 
 
 def _cell(text):

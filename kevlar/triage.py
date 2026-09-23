@@ -152,10 +152,17 @@ def _call_llm(prompt, model, client=None):
 
 def _template_ticket(clean, asset):
     kev_note = " CISA lists this CVE as actively exploited in the wild." if clean["kev"] else ""
+    # Untrusted values reach ticket prose only through safe_echo. Screening has
+    # already escaped them, but a value the pattern screen did not flag is
+    # still attacker-written text: safe_echo strips links out of it and clamps
+    # its length, so an echoed scanner string cannot break the ticket's own
+    # output contract.
+    host = guardrails.safe_echo(clean.get("hostname") or "unknown host")
+    os_name = guardrails.safe_echo(clean.get("os") or "unknown OS")
+    service = guardrails.safe_echo(clean.get("service") or "service unknown")
     return {
         "summary": (
-            f"{clean['cve']} detected on {clean.get('hostname') or 'unknown host'} "
-            f"({asset.get('type', 'asset')}, {clean.get('os') or 'unknown OS'})."
+            f"{clean['cve']} detected on {host} ({asset.get('type', 'asset')}, {os_name})."
             f"{kev_note} Finding first observed {clean.get('first_seen', 'n/a')}."
         ),
         "business_impact": (
@@ -164,7 +171,7 @@ def _template_ticket(clean, asset):
             f"services this team depends on."
         ),
         "remediation_steps": [
-            f"Confirm affected component ({clean.get('service') or 'service unknown'}) is still present",
+            f"Confirm affected component ({service}) is still present",
             f"Apply the vendor patch for {clean['cve']}",
             "If patching is blocked, isolate the service or restrict network access as compensating control",
             "Rescan the asset to verify remediation and close the finding",

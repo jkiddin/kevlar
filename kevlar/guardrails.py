@@ -26,8 +26,11 @@ Defenses, in order:
      exact key set, types and lengths, references parsed and matched against
      an allowlist by hostname, no off-allowlist URLs or markdown images in
      prose, and no quarantined text resurfacing anywhere in the output.
+  6. Rendering: an untrusted value echoed into ticket prose goes through
+     safe_echo, which strips links and clamps length, so a value the screen
+     did not flag cannot break that same contract on the way out.
 
-Detection (layer 3) is best effort. Layers 1, 2, 4 and 5 do not depend on it.
+Detection (layer 3) is best effort. Layers 1, 2, 4, 5 and 6 do not depend on it.
 """
 
 import html
@@ -87,6 +90,8 @@ MAX_PROSE_CHARS = 1200
 MAX_STEP_CHARS = 300
 MAX_STEPS = 8
 MAX_REFERENCES = 8
+# How much of an untrusted value the deterministic template may echo.
+MAX_ECHO_CHARS = 120
 
 # Sent to the API as output_config.format so the model is constrained to this
 # shape at generation time. Only keywords the structured-outputs feature
@@ -245,7 +250,7 @@ def screen_finding(finding):
 
 
 # ---------------------------------------------------------------------------
-# Output validation
+# Output validation and rendering
 # ---------------------------------------------------------------------------
 
 def is_allowed_reference(ref):
@@ -289,34 +294,81 @@ def _strings(obj):
             yield from _strings(v)
 
 
-def _canonical_words(text):
+def canonical_words(text):
+    """Normalize text and reduce it to lowercase word tokens."""
     text, _ = normalize_untrusted(text)
     return _WORD_RE.findall(text.casefold())
+
+
+def _blob(obj):
+    """Every string in obj, canonicalized and space-padded for window search."""
+    return " " + " ".join(canonical_words(" ".join(_strings(obj)))) + " "
+
+
+def contains_phrase(obj, phrase):
+    """True when phrase's words appear consecutively somewhere in obj.
+
+    Same canonicalization as find_leaks, so case, punctuation, and invisible
+    characters cannot hide the phrase. Used by the red-team harness to ask
+    whether a ticket contains a marker that only an obeyed injection would
+    produce.
+    """
+    words = canonical_words(phrase)
+    return bool(words) and f" {' '.join(words)} " in _blob(obj)
+
+
+def matching_window(obj, text, window=LEAK_WINDOW_WORDS):
+    """The first run of `window` consecutive words of text found in obj, else None.
+
+    Both sides are normalized and reduced to word tokens first, so a run that
+    was re-punctuated, re-cased, or padded with invisible characters is still
+    found. A value shorter than the window is matched whole, and only when it
+    is long enough that a coincidental match is implausible. Returning the run
+    itself keeps the evidence: a report can quote what actually resurfaced.
+    """
+    words = canonical_words(text)
+    blob = _blob(obj)
+    if len(words) >= window:
+        runs = (" ".join(words[i:i + window]) for i in range(len(words) - window + 1))
+    else:
+        joined = " ".join(words)
+        runs = iter([joined] if len(joined) >= 20 else [])
+    return next((run for run in runs if f" {run} " in blob), None)
+
+
+def contains_window(obj, text, window=LEAK_WINDOW_WORDS):
+    """True when `window` consecutive words of text appear anywhere in obj."""
+    return matching_window(obj, text, window) is not None
 
 
 def find_leaks(ticket, alerts):
     """Return the fields whose quarantined text resurfaces in the ticket.
 
-    Both sides are normalized and reduced to word tokens, then every run of
-    LEAK_WINDOW_WORDS consecutive words from the quarantined value is looked
-    for in the ticket, so a payload leaked from its middle, re-punctuated, or
-    in non-ASCII text is still caught.
+    Redaction is a promise about quarantined values specifically: once a field
+    is quarantined, no part of it may reach the ticket. Untrusted values that
+    were not quarantined are a different matter - the ticket is allowed to
+    describe them, in their screened and clamped form.
     """
-    blob = " " + " ".join(_canonical_words(" ".join(_strings(ticket)))) + " "
-    leaked = []
-    for alert in alerts:
-        if alert.get("action") != "quarantined":
-            continue
-        words = _canonical_words(alert["original"])
-        n = LEAK_WINDOW_WORDS
-        if len(words) >= n:
-            windows = (" ".join(words[i:i + n]) for i in range(len(words) - n + 1))
-        else:
-            joined = " ".join(words)
-            windows = [joined] if len(joined) >= 20 else []
-        if any(f" {w} " in blob for w in windows):
-            leaked.append(alert["field"])
-    return leaked
+    return [a["field"] for a in alerts
+            if a.get("action") == "quarantined" and contains_window(ticket, a["original"])]
+
+
+def safe_echo(value, limit=MAX_ECHO_CHARS):
+    """Prepare a screened value for interpolation into ticket prose.
+
+    Screening escapes untrusted values but does not shorten them or remove
+    links, and a value the pattern screen did not flag is rendered as-is. Two
+    of the output contract's rules are therefore the renderer's to keep: prose
+    carries no off-allowlist URLs (an exfiltration channel, and Markdown
+    viewers make them clickable), and prose stays within its length limit. A
+    3000-character hostname or an attacker's advisory link would otherwise
+    reach the ticket through the template and fail Kevlar's own contract.
+    """
+    text = _URL_RE.sub("[url removed]", str(value))
+    if len(text) > limit:
+        # Drop a trailing partial HTML entity left by the cut ("&a", "&#3").
+        text = re.sub(r"&[#A-Za-z0-9]*$", "", text[:limit]) + " [...]"
+    return text
 
 
 def _check_prose(name, value, limit, violations):
