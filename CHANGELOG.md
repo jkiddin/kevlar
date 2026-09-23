@@ -21,6 +21,7 @@ Hardening release. Scoring weights, priority thresholds, and SLAs are unchanged.
 - Type, length, and count limits are enforced locally, since the schema cannot express `maxLength` or `maxItems`.
 - The model is configurable with `--model` or `KEVLAR_MODEL`. The default is `claude-sonnet-5`.
 - Credential detection follows the SDK's own resolution chain, so an `ant auth login` profile enables `--llm` just as an `ANTHROPIC_API_KEY` does. Previously only the environment variable was recognised.
+- The red-team harness fails the run in `--llm` mode if any ticket was not drafted by the model, so a containment result produced entirely from template fallbacks cannot be reported as an LLM result.
 - The red-team suite has been run end to end against `claude-sonnet-5`: 7/7 payloads contained, every case drafted by the model and accepted by the local contract.
 - `--llm` without an API key now warns (CLI) or exits with an error (red-team harness) instead of silently producing template results.
 - The triage report shows how many LLM drafts were accepted and how many fell back, and the red-team harness has a `DRAFT` column.

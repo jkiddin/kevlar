@@ -129,6 +129,38 @@ def test_no_api_key_means_template_mode(finding, asset):
     assert draft.mode == "template" and draft.violations == []
 
 
+def test_no_credential_is_detected_when_the_sdk_returns_none(monkeypatch):
+    # The SDK returns None when nothing is configured and only raises when a
+    # config dir exists but is broken. Treating None as success made --llm
+    # run in template mode and report the result as an LLM result.
+    import anthropic
+
+    monkeypatch.setattr(anthropic, "default_credentials", lambda: None)
+    assert triage.llm_available() is False
+
+
+def test_no_credential_is_detected_when_the_sdk_raises(monkeypatch):
+    import anthropic
+
+    def boom():
+        raise anthropic.CredentialsError("config file unreadable")
+
+    monkeypatch.setattr(anthropic, "default_credentials", boom)
+    assert triage.llm_available() is False
+
+
+def test_resolved_credential_is_accepted(monkeypatch):
+    import anthropic
+
+    monkeypatch.setattr(anthropic, "default_credentials", lambda: object())
+    assert triage.llm_available() is True
+
+
+def test_api_key_alone_is_enough(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    assert triage.llm_available() is True
+
+
 def test_template_ticket_passes_the_contract(finding, asset):
     draft = triage.draft_ticket(finding, asset, use_llm=False)
     assert guardrails.validate_ticket(json.dumps(draft.ticket), draft.alerts)[1] == []

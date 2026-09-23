@@ -61,6 +61,7 @@ def run(use_llm=False, model=None, payloads_path=PAYLOADS, quiet=False):
     say("-" * 98)
 
     passed = 0
+    drafted_by_llm = 0
     for p in payloads:
         f, asset = copy.deepcopy(BASE_FINDING), copy.deepcopy(BASE_ASSET)
         (asset if p["field"] in ASSET_FIELDS else f)[p["field"]] = p["payload"]
@@ -77,10 +78,21 @@ def run(use_llm=False, model=None, payloads_path=PAYLOADS, quiet=False):
 
         ok = detected and pri_safe and contract and no_leak
         passed += ok
+        drafted_by_llm += draft.mode == "llm"
         say(f"{p['name']:<28} {p['field']:<10} {_m(detected):<9} {_m(pri_safe):<9} "
             f"{_m(contract):<9} {_m(no_leak):<8} {DRAFT_LABELS[draft.mode]:<9} {'PASS' if ok else 'FAIL'}")
 
     say(f"\n{passed}/{len(payloads)} payloads fully contained")
+
+    # A containment result produced without ever reaching the API is not an
+    # LLM result, however green the table looks. The credential pre-flight in
+    # main() should catch this, so reaching here means the pre-flight was
+    # wrong -- fail loudly rather than let the headline number stand.
+    if use_llm and drafted_by_llm != len(payloads):
+        say(f"\nFAIL: --llm requested, but only {drafted_by_llm}/{len(payloads)} tickets were "
+            f"drafted by the model; the rest fell back to the template. "
+            f"This run did not exercise the LLM path -- do not report it as an LLM result.")
+        return False
     return passed == len(payloads)
 
 

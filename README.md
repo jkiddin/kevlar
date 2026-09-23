@@ -168,7 +168,7 @@ python -m redteam.run_injection_tests --llm
 
 **LLM-mode result.** Last run 2026-09-22 against `claude-sonnet-5` (anthropic 1.8.0, Python 3.11): **7/7 payloads fully contained**, with every case reporting `DRAFT=llm` — that is, Claude's structured-output draft passed the local contract on its own rather than falling back to the template. Detection, priority stability, contract, and leak checks all held.
 
-`--llm` exits with an error when no credentials are available, so a template-mode run is never reported as an LLM result. You can also run it from GitHub: go to **Actions > CI > Run workflow**, tick **llm**, and add an `ANTHROPIC_API_KEY` repository secret. The results table is written to the run summary.
+`--llm` exits with an error when no credentials are available, so a template-mode run is never reported as an LLM result. As a second line of defence the harness also fails the run if any row's `DRAFT` column is not `llm`: containment can hold perfectly while no ticket was ever drafted by the model, and a green 7/7 from a run that never reached the API is not an LLM result. You can also run it from GitHub: go to **Actions > CI > Run workflow**, tick **llm**, and add an `ANTHROPIC_API_KEY` repository secret. The results table is written to the run summary.
 
 ## Tests and CI
 

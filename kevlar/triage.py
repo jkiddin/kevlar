@@ -87,10 +87,13 @@ def llm_available():
     try:
         import anthropic
 
-        anthropic.default_credentials()
+        # Returns None when nothing is configured; it only raises when a
+        # config dir exists but is unreadable or malformed. Both mean "no
+        # usable credential", and treating the None case as success made this
+        # guard silently pass on a machine with no credentials at all.
+        return anthropic.default_credentials() is not None
     except Exception:
         return False
-    return True
 
 
 def draft_ticket(finding, asset, use_llm=True, model=None, client=None):
