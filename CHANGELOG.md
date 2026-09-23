@@ -63,7 +63,7 @@ priority thresholds, and SLAs are unchanged.
   **30/30 cases fully contained**, with **13/26 attack
   payloads evading the input screen**. Priority changed on 0, contract failed
   on 0, quarantined text leaked in 0, and
-  0/18 model-written tickets carrying a marker obeyed the injected
+  0/19 model-written tickets carrying a marker obeyed the injected
   instruction, and 0/25 model-written attack tickets quoted a payload
   back. 29/30 drafts were accepted by the local contract,
   0 rejected by it, 1 declined by the API, and
